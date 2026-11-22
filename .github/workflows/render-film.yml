@@ -88,7 +88,6 @@ jobs:
       INPUT_VOICE: ${{ inputs.voice }}
       INPUT_PIPER_VOICE: ${{ inputs.piper_voice }}
       INPUT_TARGET: ${{ inputs.target }}
-      KIND: ${{ inputs.preview && 'preview' || 'film' }}
     steps:
       - uses: actions/checkout@v5
 
@@ -114,28 +113,30 @@ jobs:
         run: python skills/cinematic-film/scripts/check_setup.py
 
       - name: Render ${{ matrix.film }}
+        id: render
         env:
           FILM: ${{ matrix.film }}
         run: bash .github/scripts/render-film.sh "$FILM" "$RUNNER_TEMP/release"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.KIND }}-${{ matrix.film }}
+          name: ${{ steps.render.outputs.kind }}-${{ matrix.film }}
           path: ${{ runner.temp }}/release
 
       - name: Publish release (download links)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.KIND }}-${{ matrix.film }}-${{ github.run_number }}
-          name: ${{ matrix.film }} ${{ env.KIND }} (run ${{ github.run_number }})
-          prerelease: ${{ env.KIND == 'preview' }}
+          tag_name: ${{ steps.render.outputs.kind }}-${{ matrix.film }}-${{ github.run_number }}
+          name: ${{ matrix.film }} ${{ steps.render.outputs.kind }} (run ${{ github.run_number }})
+          prerelease: ${{ steps.render.outputs.kind == 'preview' }}
+          make_latest: ${{ steps.render.outputs.kind == 'film' && 'true' || 'false' }}
           body: |
-            Rendered by the **Render film** workflow (${{ env.KIND }}${{ inputs.preview && format(', first {0} seconds', inputs.preview) || '' }}).
+            Rendered by the **Render film** workflow (${{ steps.render.outputs.kind }}${{ steps.render.outputs.preview && format(', first {0} seconds', steps.render.outputs.preview) || '' }}).
 
             - `*.mp4`: clean film (upload to YouTube with the .srt)
             - `*-captions.mp4`: captions burned in (Shorts, Instagram, WhatsApp)
             - `*.srt`: subtitles
             - `*-voiceover.m4a`: the narration on its own
             - `*-thumbnail.png`: thumbnail (when the film sets one)
-            - `*-credits.md`, `*-CREDITS.md`: image, audio and font credits and licences
+            - `*-credits.md`: image, audio and font credits and licences
           files: ${{ runner.temp }}/release/*

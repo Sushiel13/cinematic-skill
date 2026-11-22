@@ -18,6 +18,7 @@
 #   MIX_ARGS     extra mix_soundtrack.py arguments (music and effects levels)
 #   LABEL        small text burned into the top-right corner of every frame (e.g. "FAN-MADE TRIBUTE")
 #   THUMB_T      time of the thumbnail still in seconds; negative counts back from the end
+#   CRF          video quality, lower = bigger files (default 18; grain makes 16 very large)
 # A project can also ship make_score.py (writes audio/score.wav from the timing) or audio/score.mp3|m4a|wav.
 set -euo pipefail
 
@@ -28,7 +29,7 @@ S="$ROOT/skills/cinematic-film/scripts"
 P="${RUNNER_TEMP:-/tmp}/film-$FILM"
 
 SIZE=1920x1080; CAPTIONS=highlighter; VOICE=piper; PIPER_VOICE=en_US-ryan-high; PIPER_FALLBACK=""
-VOICE_PITCH=1.0; VOICE_PACE=1.0; TARGET=""; PREVIEW=""; MIX_ARGS=""; LABEL=""; THUMB_T=""
+VOICE_PITCH=1.0; VOICE_PACE=1.0; TARGET=""; PREVIEW=""; MIX_ARGS=""; LABEL=""; THUMB_T=""; CRF=18
 if [ -f "$ROOT/films/$FILM/film.env" ]; then
   # shellcheck disable=SC1090
   set -a; . "$ROOT/films/$FILM/film.env"; set +a
@@ -125,11 +126,12 @@ else
 fi
 end
 
-RANGE=(); NAME="$FILM"
-if [ -n "$PREVIEW" ]; then RANGE=(--t0 0 --t1 "$PREVIEW"); NAME="$FILM-preview"; fi
+RANGE=(); NAME="$FILM"; KIND=film
+if [ -n "$PREVIEW" ]; then RANGE=(--t0 0 --t1 "$PREVIEW"); NAME="$FILM-preview"; KIND=preview; fi
+[ -n "${GITHUB_OUTPUT:-}" ] && { echo "kind=$KIND"; echo "preview=$PREVIEW"; } >> "$GITHUB_OUTPUT"
 
 step "Render $SIZE ${PREVIEW:+(first ${PREVIEW}s)}"
-python "$S/render.py" --project "$P" --size "$SIZE" "${RANGE[@]}" --out out/film.mp4 --audio audio/mix.m4a
+python "$S/render.py" --project "$P" --size "$SIZE" "${RANGE[@]}" --crf "$CRF" --out out/film.mp4 --audio audio/mix.m4a
 end
 
 if [ -n "$LABEL" ]; then
@@ -139,7 +141,7 @@ if [ -n "$LABEL" ]; then
   printf '%s' "$LABEL" > "$P/out/label.txt"
   ffmpeg -y -v error -i "$P/out/film.mp4" -vf \
     "drawtext=fontfile='$FONT':textfile='$P/out/label.txt':fontsize=$((H * 26 / 1000)):fontcolor=white@0.62:x=w-tw-$((H * 30 / 1000)):y=$((H * 30 / 1000)):shadowcolor=black@0.6:shadowx=2:shadowy=2" \
-    -c:v libx264 -preset veryfast -crf 17 -pix_fmt yuv420p -c:a copy "$P/out/film_l.mp4"
+    -c:v libx264 -preset veryfast -crf "$CRF" -pix_fmt yuv420p -c:a copy "$P/out/film_l.mp4"
   mv "$P/out/film_l.mp4" "$P/out/film.mp4"
   end
 fi
@@ -148,7 +150,7 @@ step "Captions ($CAPTIONS)"
 python "$S/burn_captions.py" --project "$P" --srt-only --out out/film.srt
 if [ "$CAPTIONS" != "none" ]; then
   python "$S/burn_captions.py" --project "$P" --video out/film.mp4 --audio audio/mix.m4a \
-    --style "$CAPTIONS" --out out/film_captions.mp4
+    --style "$CAPTIONS" --crf "$CRF" --out out/film_captions.mp4
 fi
 end
 
@@ -174,8 +176,9 @@ cp "$P/out/film.mp4" "$OUT/$NAME.mp4"
 cp "$P/out/film.srt" "$OUT/$NAME.srt"
 cp "$P/audio/narration.m4a" "$OUT/$NAME-voiceover.m4a"
 [ -f "$P/out/thumbnail.png" ] && cp "$P/out/thumbnail.png" "$OUT/$NAME-thumbnail.png"
-[ -f "$P/credits.md" ] && cp "$P/credits.md" "$OUT/$NAME-credits.md"
-[ -f "$P/CREDITS.md" ] && cp "$P/CREDITS.md" "$OUT/$NAME-CREDITS.md"
+# release file names ignore case: a hand-written CREDITS.md wins over the generated image credits.md
+if [ -f "$P/CREDITS.md" ]; then cp "$P/CREDITS.md" "$OUT/$NAME-credits.md"
+elif [ -f "$P/credits.md" ]; then cp "$P/credits.md" "$OUT/$NAME-credits.md"; fi
 [ -f "$P/beats.md" ] && cp "$P/beats.md" "$OUT/$NAME-beats.md"
 ls -la "$OUT"
 end
