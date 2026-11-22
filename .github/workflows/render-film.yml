@@ -1,0 +1,133 @@
+name: Render film
+
+# Renders cinematic films to MP4 on GitHub's free runners. No API keys.
+#  - Run it by hand: Actions -> Render film -> Run workflow (pick a film, size, captions, voice).
+#  - Or push a project to films/<name>/ on main: every changed film renders automatically.
+# Each film is uploaded as a workflow artifact and published as a GitHub Release with download links.
+
+on:
+  workflow_dispatch:
+    inputs:
+      film:
+        description: 'Film: "example" (Wright brothers), "starter", or a folder name in films/'
+        required: true
+        default: example
+      size:
+        description: Video size
+        type: choice
+        options: [1920x1080, 1280x720, 1080x1920, 3840x2160]
+        default: 1920x1080
+      captions:
+        description: Burned-in caption style (an SRT is always made too)
+        type: choice
+        options: [highlighter, clean, paper, redbar, none]
+        default: highlighter
+      voice:
+        description: Narration voice
+        type: choice
+        options: [piper, espeak]
+        default: piper
+      piper_voice:
+        description: Piper voice name (see rhasspy/piper-voices)
+        default: en_US-ryan-high
+      target:
+        description: Optional film length in seconds (leave empty for the natural read)
+        default: ''
+  push:
+    branches: [main]
+    paths: ['films/**']
+
+permissions:
+  contents: write
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      films: ${{ steps.pick.outputs.films }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+      - id: pick
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_FILM: ${{ inputs.film }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            films="[\"$INPUT_FILM\"]"
+          else
+            base="$BEFORE"
+            git cat-file -e "$base" 2>/dev/null || base="HEAD~1"
+            films=$(git diff --name-only "$base" HEAD -- films/ \
+              | awk -F/ 'NF>2 {print $2}' | sort -u \
+              | while read -r f; do [ -f "films/$f/script.json" ] && echo "$f"; done \
+              | python3 -c 'import json,sys; print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))')
+          fi
+          echo "Films to render: $films"
+          echo "films=$films" >> "$GITHUB_OUTPUT"
+
+  render:
+    needs: plan
+    if: needs.plan.outputs.films != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        film: ${{ fromJSON(needs.plan.outputs.films) }}
+    env:
+      SIZE: ${{ inputs.size || '1920x1080' }}
+      CAPTIONS: ${{ inputs.captions || 'highlighter' }}
+      VOICE: ${{ inputs.voice || 'piper' }}
+      PIPER_VOICE: ${{ inputs.piper_voice || 'en_US-ryan-high' }}
+      TARGET: ${{ inputs.target || '' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install ffmpeg, espeak-ng, fonts and Python packages
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg espeak-ng fonts-dejavu-core libgl1 libegl1 libfontconfig1
+          pip install -q -r requirements.txt piper-tts
+
+      - name: Cache Piper voices
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/piper-voices
+          key: piper-${{ env.PIPER_VOICE }}
+
+      - name: Setup check
+        run: python skills/cinematic-film/scripts/check_setup.py
+
+      - name: Render ${{ matrix.film }}
+        env:
+          FILM: ${{ matrix.film }}
+        run: bash .github/scripts/render-film.sh "$FILM" "$RUNNER_TEMP/release"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: film-${{ matrix.film }}
+          path: ${{ runner.temp }}/release
+
+      - name: Publish release (download links)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: film-${{ matrix.film }}-${{ github.run_number }}
+          name: '${{ matrix.film }} (run ${{ github.run_number }})'
+          body: |
+            Rendered by the **Render film** workflow.
+            Size ${{ env.SIZE }} · captions ${{ env.CAPTIONS }} · voice ${{ env.VOICE }}${{ env.VOICE == 'piper' && format(' ({0})', env.PIPER_VOICE) || '' }}
+
+            - `${{ matrix.film }}.mp4`: clean film (upload this to YouTube with the .srt)
+            - `${{ matrix.film }}-captions.mp4`: captions burned in (Shorts, Instagram, WhatsApp)
+            - `${{ matrix.film }}.srt`: subtitles
+            - `${{ matrix.film }}-credits.md`: image credits and licences (put them in the video description)
+          files: ${{ runner.temp }}/release/*

@@ -83,6 +83,15 @@ pip install -r requirements.txt      # skia-python, numpy, pillow (scipy optiona
 
 ffmpeg must be on your PATH. The skill's `check_setup.py` checks everything and says what's missing.
 
+## Render on GitHub Actions
+
+The **Render film** workflow (`.github/workflows/render-film.yml`) installs everything (ffmpeg, Skia, fonts, a free Piper voice) and renders a film to MP4 with captions, subtitles and credits. No API keys.
+
+- **By hand:** Actions → Render film → Run workflow. Film `example` is the Wright brothers documentary; `starter` is the blank explainer; anything else is a folder in `films/`.
+- **On push:** change a project in `films/<name>/` on `main` and it renders automatically.
+
+The files come back as a GitHub Release with download links. See [`films/README.md`](films/README.md).
+
 ## What it makes
 
 | Kind | Look | Images |
