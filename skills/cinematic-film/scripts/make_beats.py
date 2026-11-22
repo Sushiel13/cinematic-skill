@@ -18,6 +18,7 @@ import argparse
 import json
 import pathlib
 import re
+import unicodedata
 
 LPS = 14.5
 
@@ -43,7 +44,7 @@ def main():
         if i in timing:
             start, dur = timing[i]["start"], timing[i]["duration"]
         else:
-            dur = len(re.sub(r"[^A-Za-z]", "", l["spoken"])) / LPS
+            dur = sum(1 for ch in l["spoken"] if unicodedata.category(ch)[0] in "LM") / LPS
             start = cursor
             cursor += dur + l.get("gap_after", 0.45)
         typed = l.get("typed", "") or "--"

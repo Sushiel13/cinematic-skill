@@ -1,8 +1,9 @@
 name: Render film
 
 # Renders cinematic films to MP4 on GitHub's free runners. No API keys.
-#  - Run it by hand: Actions -> Render film -> Run workflow (pick a film, size, captions, voice).
+#  - Run it by hand: Actions -> Render film -> Run workflow (pick a film; set "preview" to render a draft).
 #  - Or push a project to films/<name>/ on main: every changed film renders automatically.
+# A film's own settings live in films/<name>/film.env; anything you fill in when running by hand wins.
 # Each film is uploaded as a workflow artifact and published as a GitHub Release with download links.
 
 on:
@@ -12,24 +13,27 @@ on:
         description: 'Film: "example" (Wright brothers), "starter", or a folder name in films/'
         required: true
         default: example
+      preview:
+        description: 'Preview: render only the first N seconds (e.g. 30). Empty = the full film'
+        default: ''
       size:
-        description: Video size
+        description: Video size (empty = the film's own setting, else 1920x1080)
         type: choice
-        options: [1920x1080, 1280x720, 1080x1920, 3840x2160]
-        default: 1920x1080
+        options: ['', 1920x1080, 1280x720, 1080x1920, 3840x2160]
+        default: ''
       captions:
-        description: Burned-in caption style (an SRT is always made too)
+        description: Burned-in caption style; an SRT is always made too (empty = the film's own setting)
         type: choice
-        options: [highlighter, clean, paper, redbar, none]
-        default: highlighter
+        options: ['', highlighter, clean, paper, redbar, none]
+        default: ''
       voice:
-        description: Narration voice
+        description: Narration voice (empty = the film's own setting, else piper)
         type: choice
-        options: [piper, espeak]
-        default: piper
+        options: ['', piper, espeak]
+        default: ''
       piper_voice:
-        description: Piper voice name (see rhasspy/piper-voices)
-        default: en_US-ryan-high
+        description: Piper voice, e.g. en_US-ryan-high or hi_IN-pratham-medium (empty = the film's own setting)
+        default: ''
       target:
         description: Optional film length in seconds (leave empty for the natural read)
         default: ''
@@ -72,17 +76,19 @@ jobs:
     needs: plan
     if: needs.plan.outputs.films != '[]'
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 150
     strategy:
       fail-fast: false
       matrix:
         film: ${{ fromJSON(needs.plan.outputs.films) }}
     env:
-      SIZE: ${{ inputs.size || '1920x1080' }}
-      CAPTIONS: ${{ inputs.captions || 'highlighter' }}
-      VOICE: ${{ inputs.voice || 'piper' }}
-      PIPER_VOICE: ${{ inputs.piper_voice || 'en_US-ryan-high' }}
-      TARGET: ${{ inputs.target || '' }}
+      INPUT_PREVIEW: ${{ inputs.preview }}
+      INPUT_SIZE: ${{ inputs.size }}
+      INPUT_CAPTIONS: ${{ inputs.captions }}
+      INPUT_VOICE: ${{ inputs.voice }}
+      INPUT_PIPER_VOICE: ${{ inputs.piper_voice }}
+      INPUT_TARGET: ${{ inputs.target }}
+      KIND: ${{ inputs.preview && 'preview' || 'film' }}
     steps:
       - uses: actions/checkout@v5
 
@@ -95,14 +101,14 @@ jobs:
       - name: Install ffmpeg, espeak-ng, fonts and Python packages
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq ffmpeg espeak-ng fonts-dejavu-core libgl1 libegl1 libfontconfig1
+          sudo apt-get install -y -qq ffmpeg espeak-ng fonts-dejavu-core fonts-noto-core libgl1 libegl1 libfontconfig1
           pip install -q -r requirements.txt piper-tts
 
       - name: Cache Piper voices
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/piper-voices
-          key: piper-${{ env.PIPER_VOICE }}
+          key: piper-voices-v1
 
       - name: Setup check
         run: python skills/cinematic-film/scripts/check_setup.py
@@ -114,20 +120,22 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: film-${{ matrix.film }}
+          name: ${{ env.KIND }}-${{ matrix.film }}
           path: ${{ runner.temp }}/release
 
       - name: Publish release (download links)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: film-${{ matrix.film }}-${{ github.run_number }}
-          name: '${{ matrix.film }} (run ${{ github.run_number }})'
+          tag_name: ${{ env.KIND }}-${{ matrix.film }}-${{ github.run_number }}
+          name: ${{ matrix.film }} ${{ env.KIND }} (run ${{ github.run_number }})
+          prerelease: ${{ env.KIND == 'preview' }}
           body: |
-            Rendered by the **Render film** workflow.
-            Size ${{ env.SIZE }} · captions ${{ env.CAPTIONS }} · voice ${{ env.VOICE }}${{ env.VOICE == 'piper' && format(' ({0})', env.PIPER_VOICE) || '' }}
+            Rendered by the **Render film** workflow (${{ env.KIND }}${{ inputs.preview && format(', first {0} seconds', inputs.preview) || '' }}).
 
-            - `${{ matrix.film }}.mp4`: clean film (upload this to YouTube with the .srt)
-            - `${{ matrix.film }}-captions.mp4`: captions burned in (Shorts, Instagram, WhatsApp)
-            - `${{ matrix.film }}.srt`: subtitles
-            - `${{ matrix.film }}-credits.md`: image credits and licences (put them in the video description)
+            - `*.mp4`: clean film (upload to YouTube with the .srt)
+            - `*-captions.mp4`: captions burned in (Shorts, Instagram, WhatsApp)
+            - `*.srt`: subtitles
+            - `*-voiceover.m4a`: the narration on its own
+            - `*-thumbnail.png`: thumbnail (when the film sets one)
+            - `*-credits.md`, `*-CREDITS.md`: image, audio and font credits and licences
           files: ${{ runner.temp }}/release/*

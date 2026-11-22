@@ -23,6 +23,7 @@ import json
 import math
 import pathlib
 import re
+import unicodedata
 
 import numpy as np
 import skia
@@ -48,7 +49,22 @@ FONT_ROLES = {
              ("DejaVu Sans Condensed", 700), ("Impact", 400)],
     "label": [("Avenir Next", 800), ("Montserrat", 800), ("Helvetica Neue", 700), ("Arial", 700), ("DejaVu Sans", 700)],
     "labelm": [("Avenir Next", 700), ("Montserrat", 600), ("Helvetica Neue", 500), ("Arial", 400), ("DejaVu Sans", 400)],
+    # Devanagari (Hindi, Marathi, Nepali): used for any text containing it, shaped with HarfBuzz.
+    # fonts/deva.ttf in the project wins (e.g. Teko Bold for trailer type, Noto Sans Devanagari for body).
+    "deva": [("Teko", 700), ("Noto Sans Devanagari", 700), ("Mukta", 700), ("Hind", 700), ("Lohit Devanagari", 400)],
 }
+
+
+def letters(text):
+    """Letters (and combining marks) in any script: the unit for timing shares. English: a-z only, as before."""
+    return sum(1 for ch in text if unicodedata.category(ch)[0] in "LM")
+
+
+_COMPLEX = re.compile(r"[\u0900-\u0DFF\u0600-\u06FF\u0E00-\u0EFF]")   # Indic, Arabic, Thai, Lao: need shaping
+
+
+def needs_shaping(text):
+    return bool(_COMPLEX.search(text))
 
 # Looks: the board under everything plus the film finish. A scene picks one with Film(look=...).
 LOOKS = {
@@ -156,7 +172,7 @@ class Doc:
         """When `word` is spoken in line i, by its letter share of the line (pauses spread evenly).
         Search the SPOKEN text: "1929" is spoken "nineteen twenty-nine", so ask for "nineteen"."""
         vo = self.seg[i]["vo"]
-        letters = re.sub(r"[^a-z]", "", vo.lower())
+        total = letters(vo)
         idx, start = -1, 0
         for _ in range(nth + 1):
             idx = vo.lower().find(word.lower(), start); start = idx + 1
@@ -164,8 +180,8 @@ class Doc:
                 break
         if idx < 0:
             raise ValueError(f"{word!r} (occurrence {nth}) is not in the spoken text of line {i}: {vo!r}")
-        before = len(re.sub(r"[^a-z]", "", vo[:idx].lower()))
-        return self.L(i) + (self.E(i) - self.L(i)) * before / max(1, len(letters)) + 0.04
+        before = letters(vo[:idx])
+        return self.L(i) + (self.E(i) - self.L(i)) * before / max(1, total) + 0.04
 
     def on(self, pr, fx, fy):
         """World point at a fractional position (0..1, 0..1) inside a print's image area."""
@@ -268,14 +284,65 @@ def paint(rgb=(0, 0, 0), a=1.0, stroke=None, blur=None, aa=True):
     return p
 
 
-def draw_text(c, res, text, x, y, size, font="serif", rgb=CREAM, a=1.0, track=0.0, align="left", reveal=None):
-    """Draw text with letter tracking (em fraction). reveal=n draws only the first n characters."""
+def _cluster_cut(text, n):
+    """First n characters, extended so a vowel sign, virama or nukta is never split from its letter."""
+    n = max(0, min(len(text), int(n)))
+    while n < len(text) and (unicodedata.category(text[n])[0] == "M" or text[n - 1:n] == "\u094d"):
+        n += 1
+    return text[:n]
+
+
+def _paragraph(res, text, size, font, rgb, a, blur=None):
+    """A HarfBuzz-shaped one-line paragraph: Devanagari face first, the role's face for Latin and punctuation."""
+    from skia import textlayout as tl
+    key = ("para", text, font, round(size, 2), tuple(rgb), round(a, 3), round(blur or 0, 2))
+    cache = res.cache.setdefault("_paras", {})
+    if key in cache:
+        return cache[key]
+    if len(cache) > 400:
+        cache.clear()
+    prov = res.cache.get("_prov")
+    if prov is None:
+        prov = tl.TypefaceFontProvider()
+        res.cache["_prov"] = prov
+        res.cache["_provnames"] = set()
+    names = []
+    for role in ("deva", font):
+        nm = f"role-{role}"
+        if nm not in res.cache["_provnames"]:
+            prov.registerTypeface(res.typeface(role), nm); res.cache["_provnames"].add(nm)
+        names.append(nm)
+    fc = res.cache.get("_fc")
+    if fc is None:
+        fc = tl.FontCollection(); fc.setDefaultFontManager(prov); res.cache["_fc"] = fc
+    ts = tl.TextStyle(); ts.setFontFamilies(names); ts.setFontSize(size)
+    ts.setForegroundPaint(paint(rgb, a, blur=blur))
+    b = tl.ParagraphBuilder.make(tl.ParagraphStyle(), fc, skia.Unicodes.ICU.Make())
+    b.pushStyle(ts); b.addText(text)
+    para = b.Build(); para.layout(1e7)
+    cache[key] = para
+    return para
+
+
+def draw_text(c, res, text, x, y, size, font="serif", rgb=CREAM, a=1.0, track=0.0, align="left", reveal=None, blur=None):
+    """Draw text with letter tracking (em fraction). reveal=n draws only the first n characters.
+    Text in a complex script (Devanagari and friends) is shaped as a whole and never tracked."""
+    if needs_shaping(text):
+        full = _paragraph(res, text, size, font, rgb, a, blur)
+        total = full.LongestLine
+        shown = text if reveal is None else _cluster_cut(text, reveal)
+        if not shown:
+            return total
+        para = full if shown == text else _paragraph(res, shown, size, font, rgb, a, blur)
+        x0 = x - total / 2 if align == "center" else x - total if align == "right" else x
+        para.paint(c, x0, y - para.AlphabeticBaseline)
+        return total
     f = res.font(font, size)
     widths = f.getWidths(f.textToGlyphs(text))
     gap = track * size
     total = sum(widths) + gap * (len(text) - 1)
     x0 = x - total / 2 if align == "center" else x - total if align == "right" else x
-    p = paint(rgb, a)
+    p = paint(rgb, a, blur=blur)
     n = len(text) if reveal is None else int(reveal)
     cx = x0
     for i, ch in enumerate(text):
@@ -287,6 +354,8 @@ def draw_text(c, res, text, x, y, size, font="serif", rgb=CREAM, a=1.0, track=0.
 
 
 def text_width(res, text, size, font="serif", track=0.0):
+    if needs_shaping(text):
+        return _paragraph(res, text, size, font, (0, 0, 0), 1.0).LongestLine
     f = res.font(font, size)
     return sum(f.getWidths(f.textToGlyphs(text))) + track * size * (len(text) - 1)
 

@@ -7,27 +7,38 @@
 #          "starter"  the blank starter explainer
 #          <name>     a project folder in films/<name>/ (script.json, photos.json, scene.py, ...)
 #
-# Settings come from the environment (the workflow sets them):
-#   SIZE      1920x1080 (default) or 1280x720 / 3840x2160 / 1080x1920
-#   CAPTIONS  highlighter (default) | clean | paper | redbar | none
-#   VOICE     piper (default, natural free neural voice) | espeak (robotic, very fast)
-#   PIPER_VOICE  Piper voice name, default en_US-ryan-high
-#   TARGET    optional film length in seconds (build_narration.py --target)
+# Settings, lowest to highest priority: defaults here, films/<name>/film.env, then INPUT_* from "Run workflow".
+#   SIZE         1920x1080 (default) or 1280x720 / 3840x2160 / 1080x1920
+#   CAPTIONS     highlighter (default) | clean | paper | redbar | none
+#   VOICE        piper (default, natural free neural voice) | espeak (robotic, very fast)
+#   PIPER_VOICE  Piper voice name, default en_US-ryan-high; PIPER_FALLBACK tried if it can't be downloaded
+#   VOICE_PITCH  <1 for a deeper voice (0.88 ~ two semitones down); VOICE_PACE >1 for a slower read
+#   TARGET       optional film length in seconds (build_narration.py --target)
+#   PREVIEW      render only the first N seconds (a draft to approve before the full film)
+#   MIX_ARGS     extra mix_soundtrack.py arguments (music and effects levels)
+#   LABEL        small text burned into the top-right corner of every frame (e.g. "FAN-MADE TRIBUTE")
+#   THUMB_T      time of the thumbnail still in seconds; negative counts back from the end
+# A project can also ship make_score.py (writes audio/score.wav from the timing) or audio/score.mp3|m4a|wav.
 set -euo pipefail
 
 FILM="$1"
 OUT="$2"
-SIZE="${SIZE:-1920x1080}"
-CAPTIONS="${CAPTIONS:-highlighter}"
-VOICE="${VOICE:-piper}"
-PIPER_VOICE="${PIPER_VOICE:-en_US-ryan-high}"
-TARGET="${TARGET:-}"
-
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 S="$ROOT/skills/cinematic-film/scripts"
 P="${RUNNER_TEMP:-/tmp}/film-$FILM"
-rm -rf "$P"
 
+SIZE=1920x1080; CAPTIONS=highlighter; VOICE=piper; PIPER_VOICE=en_US-ryan-high; PIPER_FALLBACK=""
+VOICE_PITCH=1.0; VOICE_PACE=1.0; TARGET=""; PREVIEW=""; MIX_ARGS=""; LABEL=""; THUMB_T=""
+if [ -f "$ROOT/films/$FILM/film.env" ]; then
+  # shellcheck disable=SC1090
+  set -a; . "$ROOT/films/$FILM/film.env"; set +a
+fi
+for v in SIZE CAPTIONS VOICE PIPER_VOICE TARGET PREVIEW; do
+  iv="INPUT_$v"; [ -n "${!iv:-}" ] && printf -v "$v" '%s' "${!iv}"
+done
+echo "film=$FILM size=$SIZE captions=$CAPTIONS voice=$VOICE/$PIPER_VOICE pitch=$VOICE_PITCH preview=${PREVIEW:-full}"
+
+rm -rf "$P"
 step() { echo; echo "::group::$*"; }
 end() { echo "::endgroup::"; }
 
@@ -73,12 +84,13 @@ step "Voice ($VOICE)"
 if [ "$VOICE" = "piper" ]; then
   VOICES="${RUNNER_TEMP:-/tmp}/piper-voices"
   mkdir -p "$VOICES"
-  if [ ! -f "$VOICES/$PIPER_VOICE.onnx" ]; then
-    python -m piper.download_voices --download-dir "$VOICES" "$PIPER_VOICE" || true
-  fi
-  if [ -f "$VOICES/$PIPER_VOICE.onnx" ]; then
+  for v in "$PIPER_VOICE" $PIPER_FALLBACK; do
+    [ -f "$VOICES/$v.onnx" ] || python -m piper.download_voices --download-dir "$VOICES" "$v" || true
+    if [ -f "$VOICES/$v.onnx" ]; then MODEL="$VOICES/$v.onnx"; echo "voice: $v"; break; fi
+  done
+  if [ -n "${MODEL:-}" ]; then
     python "$S/tts_say.py" --project "$P" \
-      --cmd "python '$ROOT/.github/scripts/piper_take.py' --model '$VOICES/$PIPER_VOICE.onnx' --txt {txt} --out {out}"
+      --cmd "python '$ROOT/.github/scripts/piper_take.py' --model '$MODEL' --txt {txt} --out {out} --pitch $VOICE_PITCH --length-scale $VOICE_PACE"
   else
     echo "::warning::Piper voice $PIPER_VOICE could not be downloaded; using espeak-ng"
     python "$S/tts_say.py" --project "$P"
@@ -95,23 +107,42 @@ fi
 python "$S/make_beats.py" --project "$P" || true
 end
 
-step "Sound effects and mix"
+step "Sound effects, score and mix"
 python "$S/render.py" --project "$P" --cues
 python "$S/build_sfx.py" --project "$P"
+if [ -f "$P/make_score.py" ]; then
+  (cd "$P" && python make_score.py --project "$P")
+fi
 MUSIC=""
 for f in "$P"/audio/score.mp3 "$P"/audio/score.m4a "$P"/audio/score.wav; do
   [ -f "$f" ] && MUSIC="$f" && break
 done
+# shellcheck disable=SC2086
 if [ -n "$MUSIC" ]; then
-  python "$S/mix_soundtrack.py" --project "$P" --music "$MUSIC"
+  python "$S/mix_soundtrack.py" --project "$P" --music "$MUSIC" $MIX_ARGS
 else
-  python "$S/mix_soundtrack.py" --project "$P"
+  python "$S/mix_soundtrack.py" --project "$P" $MIX_ARGS
 fi
 end
 
-step "Render $SIZE"
-python "$S/render.py" --project "$P" --size "$SIZE" --out out/film.mp4 --audio audio/mix.m4a
+RANGE=(); NAME="$FILM"
+if [ -n "$PREVIEW" ]; then RANGE=(--t0 0 --t1 "$PREVIEW"); NAME="$FILM-preview"; fi
+
+step "Render $SIZE ${PREVIEW:+(first ${PREVIEW}s)}"
+python "$S/render.py" --project "$P" --size "$SIZE" "${RANGE[@]}" --out out/film.mp4 --audio audio/mix.m4a
 end
+
+if [ -n "$LABEL" ]; then
+  step "Label: $LABEL"
+  FONT="$P/fonts/cond.ttf"; [ -f "$FONT" ] || FONT="$(fc-match -f '%{file}' 'DejaVu Sans:bold')"
+  H=$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 "$P/out/film.mp4")
+  printf '%s' "$LABEL" > "$P/out/label.txt"
+  ffmpeg -y -v error -i "$P/out/film.mp4" -vf \
+    "drawtext=fontfile='$FONT':textfile='$P/out/label.txt':fontsize=$((H * 26 / 1000)):fontcolor=white@0.62:x=w-tw-$((H * 30 / 1000)):y=$((H * 30 / 1000)):shadowcolor=black@0.6:shadowx=2:shadowy=2" \
+    -c:v libx264 -preset veryfast -crf 17 -pix_fmt yuv420p -c:a copy "$P/out/film_l.mp4"
+  mv "$P/out/film_l.mp4" "$P/out/film.mp4"
+  end
+fi
 
 step "Captions ($CAPTIONS)"
 python "$S/burn_captions.py" --project "$P" --srt-only --out out/film.srt
@@ -121,12 +152,30 @@ if [ "$CAPTIONS" != "none" ]; then
 fi
 end
 
+if [ -n "$THUMB_T" ]; then
+  step "Thumbnail"
+  T=$(python -c "import json; d=json.load(open('$P/audio/timing.json'))['total_duration']; t=float('$THUMB_T'); print(round(d + t if t < 0 else t, 2))")
+  rm -rf "$P/out/probe"
+  python "$S/render.py" --project "$P" --probe "$T" --size 1280x720
+  cp "$(ls "$P"/out/probe/*.png | head -1)" "$P/out/thumbnail.png"
+  if [ -n "$LABEL" ]; then
+    FONT="$P/fonts/cond.ttf"; [ -f "$FONT" ] || FONT="$(fc-match -f '%{file}' 'DejaVu Sans:bold')"
+    ffmpeg -y -v error -i "$P/out/thumbnail.png" -vf \
+      "drawtext=fontfile='$FONT':textfile='$P/out/label.txt':fontsize=19:fontcolor=white@0.7:x=w-tw-22:y=22" "$P/out/thumb_l.png"
+    mv "$P/out/thumb_l.png" "$P/out/thumbnail.png"
+  fi
+  end
+fi
+
 step "Collect outputs"
 mkdir -p "$OUT"
-cp "$P/out/film.mp4" "$OUT/$FILM.mp4"
-[ -f "$P/out/film_captions.mp4" ] && cp "$P/out/film_captions.mp4" "$OUT/$FILM-captions.mp4"
-cp "$P/out/film.srt" "$OUT/$FILM.srt"
-[ -f "$P/credits.md" ] && cp "$P/credits.md" "$OUT/$FILM-credits.md"
-[ -f "$P/beats.md" ] && cp "$P/beats.md" "$OUT/$FILM-beats.md"
+cp "$P/out/film.mp4" "$OUT/$NAME.mp4"
+[ -f "$P/out/film_captions.mp4" ] && cp "$P/out/film_captions.mp4" "$OUT/$NAME-captions.mp4"
+cp "$P/out/film.srt" "$OUT/$NAME.srt"
+cp "$P/audio/narration.m4a" "$OUT/$NAME-voiceover.m4a"
+[ -f "$P/out/thumbnail.png" ] && cp "$P/out/thumbnail.png" "$OUT/$NAME-thumbnail.png"
+[ -f "$P/credits.md" ] && cp "$P/credits.md" "$OUT/$NAME-credits.md"
+[ -f "$P/CREDITS.md" ] && cp "$P/CREDITS.md" "$OUT/$NAME-CREDITS.md"
+[ -f "$P/beats.md" ] && cp "$P/beats.md" "$OUT/$NAME-beats.md"
 ls -la "$OUT"
 end

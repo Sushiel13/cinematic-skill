@@ -1,0 +1,82 @@
+{
+ "title": "Maatrubhumi: May War Rest in Peace (fan-made tribute)",
+ "language": "hi",
+ "takes": [
+  {"take": "T01_open", "lines": [
+   {"id": 1, "text": "जब सरहद पर जंग छिड़ती है... तो सिर्फ गोलियां नहीं चलतीं।",
+    "spoken": "जब सरहद पर जंग छिड़ती है... तो सिर्फ गोलियां नहीं चलतीं।",
+    "hero": "black, smoke drifting; a lone soldier silhouette on a ridge", "typed": "", "gap_after": 0.7},
+   {"id": 2, "text": "किसी का परिवार टूटता है... किसी का सपना अधूरा रह जाता है।",
+    "spoken": "किसी का परिवार टूटता है... किसी का सपना अधूरा रह जाता है।",
+    "hero": "boot prints march across the frame; dust", "typed": ""},
+   {"id": 3, "text": "और कोई अपनी पूरी ज़िंदगी देश के नाम कर देता है।",
+    "spoken": "और कोई अपनी पूरी ज़िंदगी देश के नाम कर देता है।",
+    "hero": "big type slams in", "typed": "ONE NATION. ONE WAR. COUNTLESS SACRIFICES.", "gap_after": 1.0}
+  ]},
+  {"take": "T02_title", "lines": [
+   {"id": 4, "text": "बॉलीवुड के भाईजान सलमान खान लेकर आ रहे हैं एक ऐसी कहानी...",
+    "spoken": "बॉलीवुड के भाईजान सलमान खान लेकर आ रहे हैं एक ऐसी कहानी...",
+    "hero": "name card SALMAN KHAN in steel type", "typed": "SALMAN KHAN"},
+   {"id": 5, "text": "जहां सिर्फ ताकत नहीं... हिम्मत, जज़्बे और बलिदान की परीक्षा होगी।",
+    "spoken": "जहां सिर्फ ताकत नहीं... हिम्मत, जज़्बे और बलिदान की परीक्षा होगी।",
+    "hero": "the title MAATRUBHUMI slams in; MAY WAR REST IN PEACE types under it", "typed": "MAATRUBHUMI · MAY WAR REST IN PEACE", "gap_after": 1.0}
+  ]},
+  {"take": "T03_world", "lines": [
+   {"id": 6, "text": "मातृभूमि... देश की रक्षा करने वाले जवान सिर्फ सैनिक नहीं होते।",
+    "spoken": "मातृभूमि... देश की रक्षा करने वाले जवान सिर्फ सैनिक नहीं होते।",
+    "hero": "tactical map: contour lines and routes draw across mountain terrain; convoy silhouettes", "typed": ""},
+   {"id": 7, "text": "वो किसी के बेटे हैं, किसी के भाई, किसी के पति...",
+    "spoken": "वो किसी के बेटे हैं, किसी के भाई, किसी के पति...",
+    "hero": "three cards stamp in, one per word", "typed": "बेटा · भाई · पति"},
+   {"id": 8, "text": "और किसी के पूरे परिवार की उम्मीद।",
+    "spoken": "और किसी के पूरे परिवार की उम्मीद।",
+    "hero": "pen circle around the three cards", "typed": "", "gap_after": 0.9}
+  ]},
+  {"take": "T04_cast", "lines": [
+   {"id": 9, "text": "इस फिल्म में सलमान खान के साथ दिखाई देंगी चित्रांगदा सिंह।",
+    "spoken": "इस फिल्म में सलमान खान के साथ दिखाई देंगी चित्रांगदा सिंह।",
+    "hero": "two cast cards: SALMAN KHAN and CHITRANGDA SINGH", "typed": "SALMAN KHAN · CHITRANGDA SINGH"},
+   {"id": 10, "text": "एक ऐसी दुनिया, जहां हर फैसला ज़िंदगी और मौत के बीच खड़ा है।",
+    "spoken": "एक ऐसी दुनिया, जहां हर फैसला ज़िंदगी और मौत के बीच खड़ा है।",
+    "hero": "helicopter silhouettes cross; a red line splits two words", "typed": "ज़िंदगी | मौत", "gap_after": 0.9}
+  ]},
+  {"take": "T05_sacrifice", "lines": [
+   {"id": 11, "text": "लेकिन हर जंग की एक कीमत होती है...",
+    "spoken": "लेकिन हर जंग की एक कीमत होती है...",
+    "hero": "the field goes quiet; an empty photo frame", "typed": ""},
+   {"id": 12, "text": "जो सरहद पर खड़ा जवान ही नहीं, उसका पूरा परिवार चुकाता है।",
+    "spoken": "जो सरहद पर खड़ा जवान ही नहीं, उसका पूरा परिवार चुकाता है।",
+    "hero": "a letter from home types itself out", "typed": ""},
+   {"id": 13, "text": "असली वीरता... अपनों से दूर रहकर देश के लिए खड़े रहना भी है।",
+    "spoken": "असली वीरता... अपनों से दूर रहकर देश के लिए खड़े रहना भी है।",
+    "hero": "highlighter swipe on असली वीरता", "typed": "असली वीरता", "gap_after": 1.0}
+  ]},
+  {"take": "T06_climax", "lines": [
+   {"id": 14, "text": "जब बात मातृभूमि की हो... तो हौसले कभी पीछे नहीं हटते।",
+    "spoken": "जब बात मातृभूमि की हो... तो हौसले कभी पीछे नहीं हटते।",
+    "hero": "fast camera: soldiers advancing, smoke, flashes; drums peak", "typed": "मातृभूमि"},
+   {"id": 15, "text": "यह सिर्फ एक फिल्म नहीं... हर भारतीय के जज़्बात को सलाम है।",
+    "spoken": "यह सिर्फ एक फिल्म नहीं... हर भारतीय के जज़्बात को सलाम है।",
+    "hero": "the flag rises in slow motion", "typed": "", "gap_after": 1.0}
+  ]},
+  {"take": "T07_end", "lines": [
+   {"id": 16, "text": "सलमान खान की मातृभूमि...",
+    "spoken": "सलमान खान की मातृभूमि...",
+    "hero": "the full title card", "typed": "MAATRUBHUMI: MAY WAR REST IN PEACE"},
+   {"id": 17, "text": "4 दिसंबर 2026 को सिनेमाघरों में।",
+    "spoken": "चार दिसंबर, दो हज़ार छब्बीस को सिनेमाघरों में।",
+    "hero": "release date stamps in", "typed": "IN CINEMAS · 4 DECEMBER 2026"},
+   {"id": 18, "text": "तैयार हो जाइए... क्योंकि यहां देश सबसे पहले आता है।",
+    "spoken": "तैयार हो जाइए... क्योंकि यहां देश सबसे पहले आता है।",
+    "hero": "JAI HIND!, final impact, fade to black", "typed": "JAI HIND!", "gap_after": 1.5}
+  ]}
+ ],
+ "fact_notes": [
+  "Title and earlier name: renamed from Battle of Galwan to Maatrubhumi: May War Rest in Peace (Gulf News; Outlook India).",
+  "Release date: 4 December 2026, announced by Salman Khan (PTI via Siasat, OrissaPOST 6 Nov 2026; NewsBytes).",
+  "Cast: Salman Khan and Chitrangda Singh in the lead roles (NewsX; Bollywood Hungama; Khaleej Times).",
+  "Director Apoorva Lakhia, produced under Salman Khan Films (NewsX; Free Press Journal).",
+  "No character names, ranks or plot events are stated, as the brief asked.",
+  "All visuals are original symbolic drawings made in code, not footage or stills from the film."
+ ]
+}

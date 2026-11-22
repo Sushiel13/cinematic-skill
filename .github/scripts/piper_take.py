@@ -9,6 +9,7 @@ inside a line).
 """
 import argparse
 import pathlib
+import subprocess
 import wave
 
 from piper import PiperVoice, SynthesisConfig
@@ -22,6 +23,7 @@ def main():
     ap.add_argument("--line-pause", type=float, default=0.65, help="seconds between narration lines")
     ap.add_argument("--sentence-pause", type=float, default=0.22, help="seconds between sentences in a line")
     ap.add_argument("--length-scale", type=float, default=1.0, help=">1 slower, <1 faster")
+    ap.add_argument("--pitch", type=float, default=1.0, help="<1 deeper (0.88 = about two semitones down), same length")
     a = ap.parse_args()
 
     voice = PiperVoice.load(a.model)
@@ -45,6 +47,13 @@ def main():
                     w.writeframes(silence(a.sentence_pause))
                 w.writeframes(chunk.audio_int16_bytes)
         w.writeframes(silence(0.3))
+
+    if abs(a.pitch - 1.0) > 1e-3:
+        # lower the pitch without changing the timing: resample down, then stretch back to length
+        tmp = a.out + ".pitch.wav"
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", a.out, "-af",
+                        f"asetrate={int(rate * a.pitch)},aresample={rate},atempo={1 / a.pitch:.5f}", tmp], check=True)
+        pathlib.Path(tmp).replace(a.out)
 
 
 if __name__ == "__main__":
